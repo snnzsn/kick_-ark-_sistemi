@@ -153,7 +153,7 @@ def istek_sayfasi():
         
         <form action="/gonder" method="POST" accept-charset="UTF-8">
           <label>Kullanıcı Adın (Nick):</label>
-          <input type="text" name="nick" placeholder="Örn: Sinan" required autocomplete="off" maxlength="20">
+          <input type="text" name="nick" placeholder="Örn: " required autocomplete="off" maxlength="20">
           
           <label>YouTube Şarkı Linki:</label>
           <input type="text" name="url" placeholder="Örn: https://youtu.be/..." required autocomplete="off">
