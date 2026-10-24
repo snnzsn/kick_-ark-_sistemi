@@ -149,7 +149,7 @@ def istek_sayfasi():
     <body>
       <div class="card">
         <h2>🎵 Şarkı İstek Paneli</h2>
-        <p>Sevdiğin şarkının YouTube linkini gönder, moderatör onayından sonra sırayla çalsın!</p>
+        <p>Sevdiğin şarkının YouTube linkini gönder, moderatör onayından sonra sırayla çalsın! ( Attığın link 4 dakikadan kısa olmalı )</p>
         
         <form action="/gonder" method="POST" accept-charset="UTF-8">
           <label>Kullanıcı Adın (Nick):</label>
