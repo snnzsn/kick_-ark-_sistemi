@@ -75,9 +75,15 @@ def index():
             document.getElementById('statusDot').className = "status-dot";
             document.getElementById('statusText').innerHTML = "Bekliyor";
             
-            // Şarkı bittiğinde sunucudan da silmesini söyle
+            // 1. Önce yerel listeden çalanı hemen at
+            if (queue.length > 0) {
+              queue.shift();
+            }
+            
+            // 2. Sunucuya da silmesi için arka planda istek at
             fetch('/pop_song');
             
+            // 3. Vakit kaybetmeden sonraki şarkıya geç
             playNext();
           }
         }
@@ -103,10 +109,13 @@ def index():
             let res = await fetch('/get_queue');
             if (!res.ok) return;
             let data = await res.json();
-            queue = data;
             
-            if (!isPlaying && queue.length > 0 && player && typeof player.loadVideoById === 'function') {
-              playNext();
+            // Eğer şu an bir şarkı çalmıyorsa, sunucudan gelen yeni listeyi doğrudan al ve başlat
+            if (!isPlaying) {
+              queue = data;
+              if (queue.length > 0 && player && typeof player.loadVideoById === 'function') {
+                playNext();
+              }
             }
           } catch (e) {}
         }, 2000);
@@ -247,7 +256,6 @@ def reddet(index):
         pending_queue.pop(index)
     return redirect(url_for('mod_paneli'))
 
-# Çalan şarkı bitince sunucudan silen uç nokta
 @app.route("/pop_song")
 def pop_song():
     global song_queue
