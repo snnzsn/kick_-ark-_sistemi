@@ -148,7 +148,7 @@ def istek_sayfasi():
     </head>
     <body>
       <div class="card">
-        <h2>🎵 Şarkı İstek Paneli</h2>
+        <h2>🎵 Çatı Katı FM Acil İstek Şarkı Hattı</h2>
         <p>Sevdiğin şarkının YouTube linkini gönder, moderatör onayından sonra sırayla çalsın! ( Attığın link 4 dakikadan kısa olmalı )</p>
         
         <form action="/gonder" method="POST" accept-charset="UTF-8">
