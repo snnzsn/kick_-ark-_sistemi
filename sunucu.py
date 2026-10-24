@@ -74,7 +74,10 @@ def index():
             isPlaying = false;
             document.getElementById('statusDot').className = "status-dot";
             document.getElementById('statusText').innerHTML = "Bekliyor";
-            queue.shift();
+            
+            // Şarkı bittiğinde sunucudan da silmesini söyle
+            fetch('/pop_song');
+            
             playNext();
           }
         }
@@ -83,7 +86,6 @@ def index():
           if (queue.length > 0 && !isPlaying) {
             isPlaying = true;
             let current = queue[0];
-            // undefined hatasını önlemek için doğrudan güvenli alanlar kullanıyoruz
             let nick = current && current.nick ? current.nick : "Bilinmeyen";
             document.getElementById('nowPlaying').innerHTML = `İsteyen: <span>${nick}</span>`;
             player.loadVideoById(current.videoId);
@@ -244,6 +246,14 @@ def reddet(index):
     if 0 <= index < len(pending_queue):
         pending_queue.pop(index)
     return redirect(url_for('mod_paneli'))
+
+# Çalan şarkı bitince sunucudan silen uç nokta
+@app.route("/pop_song")
+def pop_song():
+    global song_queue
+    if song_queue:
+        song_queue.pop(0)
+    return "OK"
 
 @app.route("/get_queue")
 def get_queue():
