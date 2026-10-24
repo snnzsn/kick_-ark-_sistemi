@@ -4,12 +4,10 @@ from flask import Flask, request, Response, redirect, url_for
 
 app = Flask(__name__)
 
-# Onay bekleyen istekler listesi
 pending_queue = []
-# Onaylanmış ve sırasıyla çalacak şarkı kuyruğu
 song_queue = []
 
-# 1. YAYIN EKRANI & OTOMATİK OYNATICI WIDGET'I (OBS / Tarayıcı Kaynağı için)
+# 1. YAYIN EKRANI & GÖRSEL OYNATICI WIDGET'I
 @app.route("/")
 def index():
     return """
@@ -25,25 +23,32 @@ def index():
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       }
       .player-container {
-        background: rgba(0, 0, 0, 0.85);
+        background: rgba(18, 18, 18, 0.95);
         padding: 15px 20px;
         border-radius: 12px;
         border: 2px solid #1DB954;
-        box-shadow: 0 0 20px rgba(29, 185, 84, 0.5);
+        box-shadow: 0 0 20px rgba(29, 185, 84, 0.4);
         width: 360px;
         color: white;
       }
-      h3 { color: #1DB954; margin: 0 0 10px 0; font-size: 15px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-      .now-playing { font-size: 13px; margin-bottom: 10px; color: #b3b3b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .now-playing span { color: #1DB954; font-weight: bold; }
-      #player { display: none; } /* YouTube oynatıcı arka planda gizli çalışır */
+      .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 10px; }
+      .title { color: #1DB954; font-size: 14px; font-weight: bold; margin: 0; }
+      .status-dot { width: 10px; height: 10px; background: #e74c3c; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #e74c3c; }
+      .status-dot.playing { background: #1DB954; box-shadow: 0 0 10px #1DB954; }
+      .now-playing { font-size: 13px; color: #b3b3b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .now-playing span { color: white; font-weight: bold; }
+      #player-box { width: 100%; height: 180px; margin-top: 10px; border-radius: 8px; overflow: hidden; background: #000; display: none; }
     </style>
     </head>
     <body>
       <div class="player-container">
-        <h3>🎵 Şarkı İstek Kuyruğu</h3>
+        <div class="header">
+          <p class="title">🎵 Şarkı İstek Sistemi</p>
+          <div><span id="statusDot" class="status-dot"></span> <span id="statusText" style="font-size: 11px; color: #aaa;">Bekliyor</span></div>
+        </div>
         <div class="now-playing" id="nowPlaying">Şarkı bekleniyor...</div>
-        <div id="player"></div>
+        <!-- Şarkı çaldığında küçük bir video penceresi veya sesin gelmesi için alan -->
+        <div id="player-box"><div id="player"></div></div>
       </div>
 
       <!-- YouTube IFrame API -->
@@ -55,19 +60,31 @@ def index():
 
         function onYouTubeIframeAPIReady() {
           player = new YT.Player('player', {
-            height: '0',
-            width: '0',
+            height: '180',
+            width: '320',
             events: {
+              'onReady': onPlayerReady,
               'onStateChange': onPlayerStateChange
             }
           });
         }
 
-        // Şarkı bittiğinde (YT.PlayerState.ENDED) otomatik olarak sıradakine geç
+        function onPlayerReady(event) {
+          // Oynatıcı hazır olduğunda otomatik başlatma tetikleyebiliriz
+        }
+
         function onPlayerStateChange(event) {
-          if (event.data === YT.PlayerState.ENDED) {
+          // YT.PlayerState.PLAYING == 1
+          if (event.data === YT.PlayerState.PLAYING) {
+            document.getElementById('statusDot').className = "status-dot playing";
+            document.getElementById('statusText').innerHTML = "Çalıyor";
+          }
+          // YT.PlayerState.ENDED == 0 (Şarkı bitti)
+          else if (event.data === YT.PlayerState.ENDED) {
             isPlaying = false;
-            queue.shift(); // Çalan şarkıyı kuyruktan düşür
+            document.getElementById('statusDot').className = "status-dot";
+            document.getElementById('statusText').innerHTML = "Bekliyor";
+            queue.shift(); // Çalanı listeden sil
             playNext();
           }
         }
@@ -76,15 +93,18 @@ def index():
           if (queue.length > 0 && !isPlaying) {
             isPlaying = true;
             let current = queue[0];
-            document.getElementById('nowPlaying').innerHTML = `Çalıyor: <span>${current.nick}</span>`;
+            document.getElementById('nowPlaying').innerHTML = `İsteyen: <span>${current.nick}</span>`;
             player.loadVideoById(current.videoId);
+            player.playVideo();
           } else if (queue.length === 0) {
             document.getElementById('nowPlaying').innerHTML = "Şarkı bekleniyor...";
+            document.getElementById('statusDot').className = "status-dot";
+            document.getElementById('statusText').innerHTML = "Bekliyor";
             isPlaying = false;
           }
         }
 
-        // Her 2 saniyede bir sunucudaki güncel kuyruğu kontrol et
+        // Sunucudan sürekli kuyruğu kontrol et
         setInterval(async () => {
           try {
             let res = await fetch('/get_queue');
@@ -102,7 +122,7 @@ def index():
     </html>
     """
 
-# 2. İZLEYİCİ İSTEK PANELİ (/istek)
+# 2. İZLEYİCİ İSTEK PANELİ
 @app.route("/istek")
 def istek_sayfasi():
     return """
@@ -143,7 +163,6 @@ def istek_sayfasi():
     </html>
     """
 
-# YouTube URL'sinden Video ID'sini ayırt eden yardımcı fonksiyon
 def extract_youtube_id(url):
     if "youtu.be/" in url:
         return url.split("youtu.be/")[1].split("?")[0]
@@ -151,7 +170,6 @@ def extract_youtube_id(url):
         return url.split("watch?v=")[1].split("&")[0]
     return "dQw4w9WgXcQ"
 
-# 3. İSTEĞİ ONAY HAVUZUNA EKLEME (/gonder)
 @app.route("/gonder", methods=["POST"])
 def gonder():
     global pending_queue
@@ -176,7 +194,6 @@ def gonder():
     </body>
     """
 
-# 4. MODERATÖR ONAY PANELİ (/mod)
 @app.route("/mod")
 def mod_paneli():
     items_html = ""
@@ -223,7 +240,6 @@ def mod_paneli():
     </html>
     """
 
-# 5. ONAYLA
 @app.route("/onayla/<int:index>")
 def onayla(index):
     global pending_queue, song_queue
@@ -232,7 +248,6 @@ def onayla(index):
         song_queue.append(item)
     return redirect(url_for('mod_paneli'))
 
-# 6. REDDET
 @app.route("/reddet/<int:index>")
 def reddet(index):
     global pending_queue
@@ -240,12 +255,11 @@ def reddet(index):
         pending_queue.pop(index)
     return redirect(url_for('mod_paneli'))
 
-# 7. WIDGET İÇİN KUYRUK VERME (/get_queue)
 @app.route("/get_queue")
 def get_queue():
     json_data = json.dumps(song_queue, ensure_ascii=False)
     return Response(json_data, mimetype='application/json; charset=utf-8')
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.fget("PORT", 5000)) if hasattr(os.environ, "fget") else int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
