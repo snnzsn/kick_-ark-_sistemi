@@ -102,7 +102,7 @@ def istek_sayfasi():
         <h2>🎵 Şarkı İsteği</h2>
         <form action="/gonder" method="POST" accept-charset="UTF-8">
           <label>Kullanıcı Adın (Nick):</label>
-          <input type="text" name="nick" placeholder="Örn: Sinan" required autocomplete="off" maxlength="20">
+          <input type="text" name="nick" placeholder="Örn: " required autocomplete="off" maxlength="20">
           
           <label>Şarkı ve Sanatçı:</label>
           <input type="text" name="song" placeholder="Örn: Teoman - Paramparça" required autocomplete="off" maxlength="40">
