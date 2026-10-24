@@ -7,7 +7,6 @@ app = Flask(__name__)
 pending_queue = []
 song_queue = []
 
-# 1. YAYIN EKRANI & GÖRSEL OYNATICI WIDGET'I
 @app.route("/")
 def index():
     return """
@@ -37,7 +36,7 @@ def index():
       .status-dot.playing { background: #1DB954; box-shadow: 0 0 10px #1DB954; }
       .now-playing { font-size: 13px; color: #b3b3b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .now-playing span { color: white; font-weight: bold; }
-      #player-box { width: 100%; height: 180px; margin-top: 10px; border-radius: 8px; overflow: hidden; background: #000; display: none; }
+      #player { display: none; }
     </style>
     </head>
     <body>
@@ -47,11 +46,9 @@ def index():
           <div><span id="statusDot" class="status-dot"></span> <span id="statusText" style="font-size: 11px; color: #aaa;">Bekliyor</span></div>
         </div>
         <div class="now-playing" id="nowPlaying">Şarkı bekleniyor...</div>
-        <!-- Şarkı çaldığında küçük bir video penceresi veya sesin gelmesi için alan -->
-        <div id="player-box"><div id="player"></div></div>
+        <div id="player"></div>
       </div>
 
-      <!-- YouTube IFrame API -->
       <script src="https://www.youtube.com/iframe_api"></script>
       <script>
         let player;
@@ -60,31 +57,24 @@ def index():
 
         function onYouTubeIframeAPIReady() {
           player = new YT.Player('player', {
-            height: '180',
-            width: '320',
+            height: '0',
+            width: '0',
             events: {
-              'onReady': onPlayerReady,
               'onStateChange': onPlayerStateChange
             }
           });
         }
 
-        function onPlayerReady(event) {
-          // Oynatıcı hazır olduğunda otomatik başlatma tetikleyebiliriz
-        }
-
         function onPlayerStateChange(event) {
-          // YT.PlayerState.PLAYING == 1
           if (event.data === YT.PlayerState.PLAYING) {
             document.getElementById('statusDot').className = "status-dot playing";
             document.getElementById('statusText').innerHTML = "Çalıyor";
           }
-          // YT.PlayerState.ENDED == 0 (Şarkı bitti)
           else if (event.data === YT.PlayerState.ENDED) {
             isPlaying = false;
             document.getElementById('statusDot').className = "status-dot";
             document.getElementById('statusText').innerHTML = "Bekliyor";
-            queue.shift(); // Çalanı listeden sil
+            queue.shift();
             playNext();
           }
         }
@@ -93,7 +83,9 @@ def index():
           if (queue.length > 0 && !isPlaying) {
             isPlaying = true;
             let current = queue[0];
-            document.getElementById('nowPlaying').innerHTML = `İsteyen: <span>${current.nick}</span>`;
+            // undefined hatasını önlemek için doğrudan güvenli alanlar kullanıyoruz
+            let nick = current && current.nick ? current.nick : "Bilinmeyen";
+            document.getElementById('nowPlaying').innerHTML = `İsteyen: <span>${nick}</span>`;
             player.loadVideoById(current.videoId);
             player.playVideo();
           } else if (queue.length === 0) {
@@ -104,7 +96,6 @@ def index():
           }
         }
 
-        // Sunucudan sürekli kuyruğu kontrol et
         setInterval(async () => {
           try {
             let res = await fetch('/get_queue');
@@ -122,7 +113,6 @@ def index():
     </html>
     """
 
-# 2. İZLEYİCİ İSTEK PANELİ
 @app.route("/istek")
 def istek_sayfasi():
     return """
@@ -261,5 +251,5 @@ def get_queue():
     return Response(json_data, mimetype='application/json; charset=utf-8')
 
 if __name__ == "__main__":
-    port = int(os.environ.fget("PORT", 5000)) if hasattr(os.environ, "fget") else int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
