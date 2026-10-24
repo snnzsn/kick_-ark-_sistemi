@@ -6,11 +6,10 @@ app = Flask(__name__)
 
 # Onay bekleyen istekler listesi
 pending_queue = []
-# Canlı yayında (Streamlabs'te) gösterilen onaylanmış son 5 şarkı
+# Onaylanmış ve sırasıyla çalacak şarkı kuyruğu
 song_queue = []
-MAX_QUEUE = 5
 
-# 1. YAYIN EKRANI WIDGET'I (Streamlabs'e eklenecek ana adres)
+# 1. YAYIN EKRANI & OTOMATİK OYNATICI WIDGET'I (OBS / Tarayıcı Kaynağı için)
 @app.route("/")
 def index():
     return """
@@ -23,60 +22,87 @@ def index():
         margin: 0;
         background: transparent;
         overflow: hidden;
-        display: flex;
-        justify-content: flex-start;
-        align-items: flex-start;
-        height: 100vh;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       }
-      .queue-box {
+      .player-container {
         background: rgba(0, 0, 0, 0.85);
         padding: 15px 20px;
         border-radius: 12px;
         border: 2px solid #1DB954;
         box-shadow: 0 0 20px rgba(29, 185, 84, 0.5);
-        max-width: 400px;
+        width: 360px;
+        color: white;
       }
-      h3 { color: #1DB954; margin: 0 0 10px 0; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-      ul { list-style: none; padding: 0; margin: 0; }
-      li { color: #ffffff; font-size: 14px; padding: 6px 0; border-bottom: 1px dashed #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      li:last-child { border-bottom: none; }
-      li span { color: #1DB954; font-weight: bold; }
+      h3 { color: #1DB954; margin: 0 0 10px 0; font-size: 15px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+      .now-playing { font-size: 13px; margin-bottom: 10px; color: #b3b3b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .now-playing span { color: #1DB954; font-weight: bold; }
+      #player { display: none; } /* YouTube oynatıcı arka planda gizli çalışır */
     </style>
     </head>
     <body>
-      <div class="queue-box">
+      <div class="player-container">
         <h3>🎵 Şarkı İstek Kuyruğu</h3>
-        <ul id="songList">
-          <li>Şarkı bekleniyor...</li>
-        </ul>
+        <div class="now-playing" id="nowPlaying">Şarkı bekleniyor...</div>
+        <div id="player"></div>
       </div>
+
+      <!-- YouTube IFrame API -->
+      <script src="https://www.youtube.com/iframe_api"></script>
       <script>
+        let player;
+        let queue = [];
+        let isPlaying = false;
+
+        function onYouTubeIframeAPIReady() {
+          player = new YT.Player('player', {
+            height: '0',
+            width: '0',
+            events: {
+              'onStateChange': onPlayerStateChange
+            }
+          });
+        }
+
+        // Şarkı bittiğinde (YT.PlayerState.ENDED) otomatik olarak sıradakine geç
+        function onPlayerStateChange(event) {
+          if (event.data === YT.PlayerState.ENDED) {
+            isPlaying = false;
+            queue.shift(); // Çalan şarkıyı kuyruktan düşür
+            playNext();
+          }
+        }
+
+        function playNext() {
+          if (queue.length > 0 && !isPlaying) {
+            isPlaying = true;
+            let current = queue[0];
+            document.getElementById('nowPlaying').innerHTML = `Çalıyor: <span>${current.nick}</span>`;
+            player.loadVideoById(current.videoId);
+          } else if (queue.length === 0) {
+            document.getElementById('nowPlaying').innerHTML = "Şarkı bekleniyor...";
+            isPlaying = false;
+          }
+        }
+
+        // Her 2 saniyede bir sunucudaki güncel kuyruğu kontrol et
         setInterval(async () => {
           try {
             let res = await fetch('/get_queue');
             if (!res.ok) return;
             let data = await res.json();
-            let ul = document.getElementById('songList');
-            ul.innerHTML = "";
+            queue = data;
             
-            if(!data || data.length === 0) {
-              ul.innerHTML = "<li>Şarkı bekleniyor...</li>";
-            } else {
-              data.forEach(item => {
-                let li = document.createElement('li');
-                li.innerHTML = `<span>${item.nick}</span> ➔ ${item.song}`;
-                ul.appendChild(li);
-              });
+            if (!isPlaying && queue.length > 0 && player && typeof player.loadVideoById === 'function') {
+              playNext();
             }
           } catch (e) {}
-        }, 1000);
+        }, 2000);
       </script>
     </body>
     </html>
     """
 
-# 2. İZLEYİCİ İSTEK PANELİ
+# 2. İZLEYİCİ İSTEK PANELİ (/istek)
 @app.route("/istek")
 def istek_sayfasi():
     return """
@@ -85,27 +111,30 @@ def istek_sayfasi():
     <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kick Şarkı İstek Paneli</title>
+    <title>Şarkı İstek Paneli</title>
     <style>
-      body { background: #121212; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-      .card { background: #181818; padding: 35px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); text-align: center; width: 320px; border: 1px solid #282828; }
-      h2 { color: #1DB954; margin-bottom: 20px; font-size: 22px; }
-      label { display: block; text-align: left; font-size: 14px; color: #b3b3b3; margin-bottom: 5px; }
-      input { width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; font-size: 15px; outline: none; }
+      body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+      .card { background: #181818; padding: 30px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); text-align: center; width: 340px; border: 1px solid #282828; }
+      h2 { color: #1DB954; margin-bottom: 10px; font-size: 20px; }
+      p { color: #b3b3b3; font-size: 13px; margin-bottom: 20px; line-height: 1.4; }
+      label { display: block; text-align: left; font-size: 13px; color: #b3b3b3; margin-bottom: 5px; }
+      input { width: 100%; box-sizing: border-box; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #333; background: #222; color: white; font-size: 14px; outline: none; }
       input:focus { border-color: #1DB954; }
-      button { background: #1DB954; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; font-weight: bold; }
-      button:hover { background: #1ed760; }
+      button[type="submit"] { background: #1DB954; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 15px; cursor: pointer; width: 100%; font-weight: bold; }
+      button[type="submit"]:hover { background: #1ed760; }
     </style>
     </head>
     <body>
       <div class="card">
-        <h2>🎵 Şarkı İsteği</h2>
+        <h2>🎵 Şarkı İstek Paneli</h2>
+        <p>Sevdiğin şarkının YouTube linkini gönder, moderatör onayından sonra sırayla çalsın!</p>
+        
         <form action="/gonder" method="POST" accept-charset="UTF-8">
           <label>Kullanıcı Adın (Nick):</label>
-          <input type="text" name="nick" placeholder="Örn: " required autocomplete="off" maxlength="20">
+          <input type="text" name="nick" placeholder="Örn: Sinan" required autocomplete="off" maxlength="20">
           
-          <label>Şarkı ve Sanatçı:</label>
-          <input type="text" name="song" placeholder="Örn: Teoman - Paramparça" required autocomplete="off" maxlength="40">
+          <label>YouTube Şarkı Linki:</label>
+          <input type="text" name="url" placeholder="Örn: https://youtu.be/..." required autocomplete="off">
           
           <button type="submit">İsteği Gönder</button>
         </form>
@@ -114,16 +143,25 @@ def istek_sayfasi():
     </html>
     """
 
-# 3. İSTEĞİ ONAY HAVUZUNA EKLEME
+# YouTube URL'sinden Video ID'sini ayırt eden yardımcı fonksiyon
+def extract_youtube_id(url):
+    if "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+    elif "watch?v=" in url:
+        return url.split("watch?v=")[1].split("&")[0]
+    return "dQw4w9WgXcQ"
+
+# 3. İSTEĞİ ONAY HAVUZUNA EKLEME (/gonder)
 @app.route("/gonder", methods=["POST"])
 def gonder():
     global pending_queue
     request.charset = 'utf-8'
     nick = request.form.get("nick")
-    song = request.form.get("song")
+    url = request.form.get("url")
     
-    if nick and song:
-        pending_queue.append({"nick": nick, "song": song})
+    if nick and url:
+        video_id = extract_youtube_id(url)
+        pending_queue.append({"nick": nick, "videoId": video_id})
             
     return """
     <!DOCTYPE html>
@@ -132,13 +170,13 @@ def gonder():
     <body style="background:#121212; color:white; font-family:sans-serif; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0;">
       <div style="background:#181818; padding:35px; border-radius:16px; border:1px solid #282828;">
         <h2 style="color:#1DB954;">🎉 İsteğin Moderatör Onayına Gönderildi!</h2>
-        <p style="color:#b3b3b3; margin-bottom:20px;">Onaylandığında ekranda görünecektir.</p>
+        <p style="color:#b3b3b3; margin-bottom:20px;">Onaylandığında sırayla otomatik çalmaya başlayacaktır.</p>
         <a href="/istek" style="background:#1DB954; color:white; padding:10px 20px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block;">Yeni İstek Gönder</a>
       </div>
     </body>
     """
 
-# 4. MODERATÖR ONAY PANELİ (Adres: .../mod)
+# 4. MODERATÖR ONAY PANELİ (/mod)
 @app.route("/mod")
 def mod_paneli():
     items_html = ""
@@ -149,8 +187,8 @@ def mod_paneli():
             items_html += f"""
             <tr>
               <td style="padding:12px; border-bottom:1px solid #333;"><b>{item['nick']}</b></td>
-              <td style="padding:12px; border-bottom:1px solid #333;">{item['song']}</td>
-              <td style="padding:12px; border-bottom:1px solid #333; text-align:right;">
+              <td style="padding:12px; border-bottom:1px solid #333; font-size:13px;"><a href="https://youtu.be/{item['videoId']}" target="_blank" style="color:#1DB954;">Şarkıyı Dinle / Kontrol Et</a></td>
+              <td style="padding:12px; border-bottom:1px solid #333; text-align:right; white-space:nowrap;">
                 <a href="/onayla/{index}" style="background:#1DB954; color:white; padding:6px 12px; border-radius:4px; text-decoration:none; font-weight:bold; margin-right:5px;">Onayla</a>
                 <a href="/reddet/{index}" style="background:#e74c3c; color:white; padding:6px 12px; border-radius:4px; text-decoration:none; font-weight:bold;">Reddet</a>
               </td>
@@ -165,7 +203,7 @@ def mod_paneli():
     <title>Moderatör Onay Paneli</title>
     <style>
       body {{ background: #121212; color: white; font-family: 'Segoe UI', sans-serif; padding: 40px; }}
-      .container {{ max-width: 700px; margin: 0 auto; background: #181818; padding: 25px; border-radius: 12px; border: 1px solid #333; }}
+      .container {{ max-width: 750px; margin: 0 auto; background: #181818; padding: 25px; border-radius: 12px; border: 1px solid #333; }}
       h2 {{ color: #1DB954; margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px; }}
       table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
       .refresh-btn {{ background: #333; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 14px; float: right; }}
@@ -176,7 +214,7 @@ def mod_paneli():
     <body>
       <div class="container">
         <h2>🛡️ Moderatör İstek Paneli <a href="/mod" class="refresh-btn">🔄 Yenile</a></h2>
-        <p style="color:#aaa; font-size:13px;">Bu sayfa her 5 saniyede bir otomatik yenilenir. Troll istekleri "Reddet" ile silebilirsin.</p>
+        <p style="color:#aaa; font-size:13px;">Gelen YouTube linkini kontrol edip onaylayın.</p>
         <table>
           {items_html}
         </table>
@@ -185,18 +223,16 @@ def mod_paneli():
     </html>
     """
 
-# 5. ONAYLA BUTONU (İsteği canlı kuyruğa taşır)
+# 5. ONAYLA
 @app.route("/onayla/<int:index>")
 def onayla(index):
     global pending_queue, song_queue
     if 0 <= index < len(pending_queue):
         item = pending_queue.pop(index)
-        song_queue.insert(0, item)
-        if len(song_queue) > MAX_QUEUE:
-            song_queue.pop()
+        song_queue.append(item)
     return redirect(url_for('mod_paneli'))
 
-# 6. REDDET BUTONU (İsteği çöpe atar)
+# 6. REDDET
 @app.route("/reddet/<int:index>")
 def reddet(index):
     global pending_queue
@@ -204,7 +240,7 @@ def reddet(index):
         pending_queue.pop(index)
     return redirect(url_for('mod_paneli'))
 
-# 7. WIDGET İÇİN CANLI KUYRUĞU VERME
+# 7. WIDGET İÇİN KUYRUK VERME (/get_queue)
 @app.route("/get_queue")
 def get_queue():
     json_data = json.dumps(song_queue, ensure_ascii=False)
