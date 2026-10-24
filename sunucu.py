@@ -65,26 +65,20 @@ def index():
           });
         }
 
-        function onPlayerStateChange(event) {
-          if (event.data === YT.PlayerState.PLAYING) {
-            document.getElementById('statusDot').className = "status-dot playing";
-            document.getElementById('statusText').innerHTML = "Çalıyor";
-          }
-          else if (event.data === YT.PlayerState.ENDED) {
+        async function onPlayerStateChange(event) {
+          // YT.PlayerState.ENDED == 0 (Şarkı bitti)
+          if (event.data === YT.PlayerState.ENDED) {
             isPlaying = false;
             document.getElementById('statusDot').className = "status-dot";
             document.getElementById('statusText').innerHTML = "Bekliyor";
             
-            // 1. Önce yerel listeden çalanı hemen at
-            if (queue.length > 0) {
-              queue.shift();
-            }
-            
-            // 2. Sunucuya da silmesi için arka planda istek at
-            fetch('/pop_song');
-            
-            // 3. Vakit kaybetmeden sonraki şarkıya geç
-            playNext();
+            // Şarkının bittiğini sunucuya bildir ve silindiğinden emin ol
+            try {
+              await fetch('/pop_song');
+            } catch (e) {}
+
+            // Hemen ardından güncel kuyruğu çek ve sonrakini çal
+            fetchQueueAndPlay();
           }
         }
 
@@ -94,6 +88,9 @@ def index():
             let current = queue[0];
             let nick = current && current.nick ? current.nick : "Bilinmeyen";
             document.getElementById('nowPlaying').innerHTML = `İsteyen: <span>${nick}</span>`;
+            document.getElementById('statusDot').className = "status-dot playing";
+            document.getElementById('statusText').innerHTML = "Çalıyor";
+            
             player.loadVideoById(current.videoId);
             player.playVideo();
           } else if (queue.length === 0) {
@@ -104,20 +101,24 @@ def index():
           }
         }
 
-        setInterval(async () => {
+        async function fetchQueueAndPlay() {
           try {
             let res = await fetch('/get_queue');
             if (!res.ok) return;
             let data = await res.json();
+            queue = data;
             
-            // Eğer şu an bir şarkı çalmıyorsa, sunucudan gelen yeni listeyi doğrudan al ve başlat
-            if (!isPlaying) {
-              queue = data;
-              if (queue.length > 0 && player && typeof player.loadVideoById === 'function') {
-                playNext();
-              }
+            if (!isPlaying && queue.length > 0 && player && typeof player.loadVideoById === 'function') {
+              playNext();
             }
           } catch (e) {}
+        }
+
+        // Şarkı çalmıyorken her 2 saniyede bir yeni istek var mı diye kontrol et
+        setInterval(() => {
+          if (!isPlaying) {
+            fetchQueueAndPlay();
+          }
         }, 2000);
       </script>
     </body>
